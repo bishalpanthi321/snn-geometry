@@ -1,0 +1,67 @@
+# Single source of truth for every stage. Paths are relative to the project root
+# unless --out-root (or the SNNGEO_OUT_ROOT env var) points somewhere else, e.g.
+# /kaggle/working on Kaggle. The CIFAR-10 download dir is never moved by --smoke.
+
+seed: 0
+
+paths:
+  data_root: data                 # torchvision CIFAR-10 download
+  corrupted_dir: data/corrupted   # generated corruptions (uint8, test-set order)
+  cifar10c_dir: data/CIFAR-10-C   # optional official download, cross-check only
+  ckpt_dir: checkpoints
+  features_dir: features
+  results_dir: results
+  logs_dir: logs
+
+train:
+  epochs: 100
+  batch_size: 128        # effective batch size (what the optimizer sees per step)
+  micro_batch: null      # physical batch; null = batch_size. Set e.g. 32 on a 4 GB GPU
+                         # (gradient accumulation; BatchNorm then sees micro_batch images)
+  lr: 1.0e-3
+  weight_decay: 5.0e-4
+  amp: true
+  checkpoint_for_analysis: final   # final | best. "best" is selected on the test set, so
+                                   # it is mildly optimistic; final is the default.
+
+snn:
+  T: 4
+  tau: 2.0               # decay factor 1 - 1/tau = 0.5
+  v_threshold: 1.0
+  v_reset: 0.0           # hard reset to 0
+  detach_reset: true     # as in the SEW-ResNet paper
+  surrogate_alpha: 2.0   # ATan surrogate sharpness (spikingjelly default)
+  impl: auto             # auto | spikingjelly | plain (auto = spikingjelly if importable)
+  T_inference_extra: [8] # extra inference-only timestep counts for H4
+
+corruptions:
+  names: [gaussian_noise, shot_noise, impulse_noise, gaussian_blur, contrast, brightness]
+  severities: [1, 2, 3, 4, 5]
+  seed: 1234
+
+split:
+  seed: 0                # fit/eval split of the CIFAR-10 test set (50/50)
+
+extract:
+  batch_size: 250
+  layers: [layer1, layer2, layer3, layer4, penultimate]
+  repeat_check_n: 1000   # re-extract this many clean images to check determinism
+
+analysis:
+  ks_heldout: [1, 2, 5, 10, 20, 50]
+  ks_defense: [1, 2, 5, 10, 20]
+  k_cap: 50
+  energy_threshold: 0.9
+  n_random_subspaces: 20
+  transfer_k: 10
+  temporal_k: 10
+  min_norm: 1.0e-8       # rows with ||h_clean|| below this are excluded from ratios
+
+smoke:
+  epochs: 2
+  n_test: 500
+  n_train: 5000          # training subset per smoke epoch (throughput is extrapolated)
+  n_train_lda: 2000
+  corruptions: [gaussian_noise, contrast]
+  severities: [1, 3]
+  out_subdir: smoke_run

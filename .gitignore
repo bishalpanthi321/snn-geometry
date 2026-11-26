@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+data/
+logs/
+results/
+smoke_run/
+checkpoints/
+features/
+*.out
