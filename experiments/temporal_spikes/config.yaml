@@ -1,0 +1,84 @@
+# Temporal spike structure experiment. Single source of truth for every stage.
+#
+# Paths: null means "use the default". Every path can also be set with an env var
+# or a command-line flag (flag > env var > this file > default):
+#   checkpoint     --checkpoint     TS_CHECKPOINT      default <repo>/checkpoints/snn/final.pt
+#   data_root      --data-root      TS_DATA_ROOT       default <repo>/data   (CIFAR-10, read only)
+#   corrupted_dir  --corrupted-dir  TS_CORRUPTED_DIR   default <repo>/data/corrupted (read only)
+#   out_root       --out-root       TS_OUT_ROOT        default experiments/temporal_spikes
+# Outputs go to <out_root>/{cache,results,logs}/<stage>/, so smoke, pilot and full
+# never overwrite each other, and nothing of the original experiment is touched.
+
+seed: 0
+split_seed: 0              # same fit/eval split of the CIFAR-10 test set as the geometry experiment
+
+paths:
+  checkpoint: null
+  data_root: null
+  corrupted_dir: null
+  out_root: null
+
+# Clean test accuracy of the checkpoint measured by the original extraction
+# (features/snn*/meta.json, full 10k test set). extract.py re-measures it and
+# fails if it differs by more than accuracy_tolerance (wrong checkpoint).
+expected_clean_acc: {4: 0.9168, 8: 0.9195}
+accuracy_tolerance: 0.003
+
+corruptions: [gaussian_noise, shot_noise, impulse_noise, gaussian_blur, contrast, brightness]
+
+# Recording / intervention sites.
+#   Binary sites are LIF outputs (values exactly 0/1).
+#   Integer sites are SEW stage outputs = sums of spike trains (values 0..vmax per timestep).
+integer_sites: {layer3_in: 3, layer4_in: 3}      # name: vmax (asserted at run time)
+detector_sites: [layer2.1.sn2, layer3.1.sn2, layer4.1.sn2]   # binary sites used by Experiment B
+lag_pca_dim: 8              # PCA dims for the lag-1 cross-channel covariance (B)
+raster_images: 8            # first N eval images per condition saved as raw spikes (figures)
+
+interventions:
+  # Experiment A sites (upstream of at least one LIF) and null sites (downstream is
+  # linear + time average, so count-preserving changes must leave logits unchanged).
+  sites: [layer3_in, layer4_in, layer4.0.sn1]
+  null_sites: [layer4_out, layer4.1.sn2]
+  n_seeds: 5
+  n_shared_perms_max: {4: 23, 8: 10}   # all 23 non-identity permutations at T=4; 10 sampled at T=8
+
+detection:
+  C_grid: [0.001, 0.01, 0.1, 1.0]   # CV for C uses <= 8000 training rows, sampled by image
+  cv_folds: 3
+  n_strata: 10              # margin / firing-count deciles (edges from training rows)
+
+bootstrap:
+  n: 1000
+  seed: 0
+
+stages:
+  smoke:
+    batch_size: 16
+    n_ref: 64               # clean TRAINING images for reference statistics
+    n_fit: 48               # test-set fit split images per condition (B training)
+    n_eval: 48              # test-set eval split images per condition (B testing, A, capacity)
+    n_A: 16                 # eval images per condition for Experiment A
+    corruptions: [gaussian_noise, contrast]
+    severities: [3]
+    A_severities: [3]
+    T: [4, 8]
+  pilot:
+    batch_size: 100
+    n_ref: 5000
+    n_fit: 2000
+    n_eval: 2000
+    n_A: 1000
+    corruptions: all
+    severities: [1, 3, 5]
+    A_severities: [3]
+    T: [4, 8]               # A runs at T=4 only in the pilot (run_interventions.py --T 4)
+  full:
+    batch_size: 100
+    n_ref: 10000
+    n_fit: 5000
+    n_eval: 5000
+    n_A: 2000
+    corruptions: all
+    severities: [1, 2, 3, 4, 5]
+    A_severities: [1, 3, 5]
+    T: [4, 8]
