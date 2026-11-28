@@ -1,0 +1,59 @@
+# Rate-monitor experiment: is the error-detection gain from internal activations stronger
+# for the SNN than for the ANN, and can a sparse monitor keep it?
+# CPU-only. Reads the geometry experiment's saved features (read only); trains nothing.
+#
+# Paths (flag > env var > this file > default):
+#   features_root   --features-root   RM_FEATURES        default <repo>/features
+#   checkpoint_dir  --checkpoint-dir  RM_CHECKPOINT_DIR  default <repo>/checkpoints  (benchmark only)
+#   data_root       --data-root       RM_DATA_ROOT       default <repo>/data         (benchmark only)
+#   out_root        --out-root        RM_OUT_ROOT        default experiments/rate_monitor
+# Outputs: <out_root>/results/<stage>/, <out_root>/logs/<stage>/
+
+seed: 0
+split_seed: 0                 # the geometry experiment's 50/50 fit/eval split of the test set
+
+paths:
+  features_root: null
+  checkpoint_dir: null
+  data_root: null
+  out_root: null
+
+models: [snn, ann]            # feature tags under features_root
+layers: [layer1, layer2, layer3, penultimate]
+layer_dims: {layer1: 64, layer2: 128, layer3: 256, penultimate: 512}
+T: 4
+corruptions: [gaussian_noise, shot_noise, impulse_noise, gaussian_blur, contrast, brightness]
+
+detection:
+  C_grid: [0.001, 0.01, 0.1, 1.0]
+  cv_folds: 3
+  max_cv_rows: 8000           # rows used to choose C (sampled by image); final fit uses all rows
+  n_strata: 10                # margin deciles, edges from TRAINING rows of each model
+
+sparse:
+  fractions: [0.01, 0.02, 0.05, 0.1, 0.25]   # of the 960 channels
+  n_random: 5
+  l1_path_points: 12          # L1 regularisation path used to rank channels by entry order
+  retention_fraction: 0.10    # exploratory rule: does 10% of channels keep >= 90% of the gain?
+
+bootstrap:
+  n: 1000
+  seed: 0
+
+stages:
+  smoke:
+    n_fit: 150
+    n_eval: 150
+    severities: [1, 3]
+    corruptions: [gaussian_noise, contrast, brightness]
+    n_boot: 50
+  pilot:
+    n_fit: 2000
+    n_eval: 2000
+    severities: [1, 3, 5]
+    corruptions: all
+  full:
+    n_fit: 5000
+    n_eval: 5000
+    severities: [1, 2, 3, 4, 5]
+    corruptions: all
